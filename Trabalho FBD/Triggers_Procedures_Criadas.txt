@@ -1,0 +1,168 @@
+-- ESTA TRIGGER ADICIONA A PLACA DE UM CARRO NO ESTOQUE SEMPRE QUE ELE É INSERIDO NO SISTEMA
+
+CREATE OR REPLACE FUNCTION f_addCarro() RETURNS TRIGGER AS
+$$
+BEGIN
+	INSERT INTO Estoque VALUES(NEW.placa);
+	RETURN NEW;
+END
+$$
+LANGUAGE 'plpgsql';
+
+CREATE TRIGGER t_addCarro
+AFTER INSERT
+ON Carro
+FOR EACH ROW
+EXECUTE PROCEDURE f_addCarro();
+
+
+
+-- ESTA TRIGGER INSERE A PLACA DE UM CARRO NO ESTOQUE SEMPRE QUE ELE É DEVOLVIDO PELO CLIENTE.
+
+CREATE OR REPLACE FUNCTION f_devCarro() RETURNS TRIGGER AS
+$$
+BEGIN
+	INSERT INTO Estoque VALUES(NEW.placa_carro);
+	RETURN NEW;
+END
+$$
+LANGUAGE 'plpgsql';
+
+CREATE TRIGGER t_devCarro
+BEFORE INSERT
+ON Historico
+FOR EACH ROW
+EXECUTE PROCEDURE f_devCarro();
+
+
+
+-- ESTA TRIGGER DELETA A PLACA DE UM CARRO NO ESTOQUE SEMPRE QUE ELE É ALUGADO POR ALGUM CLIENTE
+
+CREATE OR REPLACE FUNCTION f_delCarro() RETURNS TRIGGER AS
+$$
+BEGIN
+	IF OLD.placa IN (SELECT placa_carro FROM Emprestimo) THEN
+		RETURN NULL;
+	ELSE
+		DELETE FROM Estoque WHERE OLD.placa LIKE placa_carro;
+		RETURN OLD;
+	END IF;
+END
+$$
+LANGUAGE 'plpgsql';
+
+
+CREATE TRIGGER t_delCarro
+BEFORE DELETE
+ON Carro
+FOR EACH ROW
+EXECUTE PROCEDURE f_delCarro();
+
+
+
+
+-- ESTA TRIGGER CALCULA O SALDO FINAL DE UM CLIENTE
+
+﻿CREATE OR REPLACE FUNCTION calcularSaldo(cpf VARCHAR(14)) RETURNS REAL AS
+$$
+DECLARE
+	somatorio REAL;
+BEGIN
+	IF cpf NOT IN (SELECT cpf_cliente FROM Historico) THEN
+		RETURN 0;
+	ELSE
+		SELECT SUM(preco_final) INTO somatorio
+		FROM Historico
+		WHERE cpf_cliente LIKE cpf;
+
+		RETURN somatorio;
+	END IF;
+END
+$$
+LANGUAGE 'plpgsql';
+
+
+
+
+-- ESTA TRIGGER IMPEDE QUE UM CLIENTE ALUGUE UM CARRO COM DIAS IMPOSSÍVEIS
+
+CREATE OR REPLACE FUNCTION f_emprCarro() RETURNS TRIGGER AS
+$$
+BEGIN
+	IF NEW.placa_carro NOT IN (SELECT placa_carro FROM Estoque) OR NEW.dias_escolhidos <= 0 THEN
+		RETURN NULL;
+	ELSE
+		DELETE FROM Estoque WHERE NEW.placa_carro LIKE placa_carro;
+		RETURN NEW;
+	END IF;
+END
+$$
+LANGUAGE 'plpgsql';
+
+CREATE TRIGGER t_emprCarro
+BEFORE INSERT
+ON Emprestimo
+FOR EACH ROW
+EXECUTE PROCEDURE f_emprCarro();
+
+
+
+
+-- TRIGGER MAIS IMPORTANTE, ELA ATUALIZA O PRECO FINAL SEMPRE QUE CLIENTE DEVOLVE O CARRO. CALCULA OS DIAS QUE ELE FICOU
+-- PARA ATUALIZAR OS JUROS E ATUALIZA A TABELA EMPRÉSTIMO PARA DEVOLVIDO.
+
+﻿﻿CREATE OR REPLACE FUNCTION f_altJuros() RETURNS TRIGGER AS
+$$
+DECLARE
+	dias_Sub INTEGER;
+	dias_esc INTEGER;
+	dia_empr DATE;
+	juros_base REAL;
+	preco_ba REAL;
+BEGIN
+	SELECT data_emprestimo INTO dia_empr
+	FROM Emprestimo
+	WHERE NEW.cpf_cliente LIKE cpf_cliente AND NEW.placa_carro LIKE placa_carro AND devolvido = FALSE;
+
+	SELECT dias_escolhidos INTO dias_esc
+	FROM Emprestimo
+	WHERE NEW.cpf_cliente LIKE cpf_cliente AND NEW.placa_carro LIKE placa_carro AND devolvido = FALSE;
+
+	SELECT preco_base INTO preco_ba
+	FROM Emprestimo
+	WHERE NEW.cpf_cliente LIKE cpf_cliente AND NEW.placa_carro LIKE placa_carro AND devolvido = FALSE;
+	
+	dias_Sub := NEW.data_devolvida - dia_empr;
+
+	IF dias_Sub <= dias_esc THEN
+		juros_base := 0;
+	ELSE
+		juros_base := 0.1 * (dias_Sub - dias_esc);
+	END IF;
+	
+	UPDATE Emprestimo
+	SET juros = juros_base
+	WHERE NEW.cpf_cliente LIKE cpf_cliente AND NEW.placa_carro LIKE placa_carro AND devolvido = FALSE;
+
+	UPDATE Emprestimo
+	SET devolvido = TRUE
+	WHERE NEW.cpf_cliente LIKE cpf_cliente AND NEW.placa_carro LIKE placa_carro AND devolvido = FALSE;
+
+	UPDATE Historico
+	SET dias_ficados = dias_Sub
+	WHERE NEW.cpf_cliente LIKE cpf_cliente AND NEW.placa_carro LIKE placa_carro AND NEW.data_devolvida = data_devolvida;
+
+	UPDATE Historico
+	SET preco_final = preco_ba + (preco_ba * juros_base)
+	WHERE NEW.cpf_cliente LIKE cpf_cliente AND NEW.placa_carro LIKE placa_carro AND NEW.data_devolvida = data_devolvida;
+	
+	RETURN NEW;
+END
+$$
+LANGUAGE 'plpgsql';
+
+CREATE TRIGGER t_altJuros
+AFTER INSERT
+ON Historico
+FOR EACH ROW
+EXECUTE PROCEDURE f_altJuros();

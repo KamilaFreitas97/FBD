@@ -1,0 +1,67 @@
+﻿﻿CREATE TABLE Carro
+(
+	placa VARCHAR(8),
+	modelo VARCHAR(30),
+	preco REAL,
+
+	CONSTRAINT PK_Carro PRIMARY KEY(placa)
+);
+
+CREATE TABLE Cliente
+(
+	cpf VARCHAR(14),
+	nome VARCHAR(45),
+	sexo CHAR,
+
+	CONSTRAINT PK_Cliente PRIMARY KEY(cpf)
+);
+
+CREATE TABLE Vendedor
+(
+	cpf VARCHAR(14),
+	nome VARCHAR(45),
+	sexo CHAR,
+	senha VARCHAR(10),
+	salario REAL,
+
+	CONSTRAINT PK_Vendedor PRIMARY KEY(cpf)
+);
+
+CREATE TABLE Estoque
+(
+	placa_carro VARCHAR(30),
+
+	CONSTRAINT PK_Estoque PRIMARY KEY(placa_carro),
+	CONSTRAINT FK_Estoque FOREIGN KEY(placa_carro) REFERENCES Carro(placa)
+);
+
+CREATE TABLE Emprestimo
+(
+	cpf_cliente VARCHAR(14),
+	placa_carro VARCHAR(8),
+	data_emprestimo DATE,
+	dias_escolhidos INTEGER,
+	cpf_vendedor VARCHAR(14),
+	juros REAL,
+	preco_base REAL,
+	
+	CONSTRAINT PK_Emprestimo PRIMARY KEY(cpf_cliente, placa_carro, data_emprestimo, hora_emprestimo),
+	CONSTRAINT FK1_Emprestimo FOREIGN KEY(cpf_cliente) REFERENCES Cliente(cpf),
+	CONSTRAINT FK2_Emprestimo FOREIGN KEY(placa_carro) REFERENCES Carro(placa),
+	CONSTRAINT FK3_Emprestimo FOREIGN KEY(cpf_vendedor) REFERENCES Vendedor(cpf)
+);
+
+CREATE TABLE Historico
+(
+	cpf_cliente VARCHAR(14),
+	placa_carro VARCHAR(8),
+	data_devolvida DATE,
+	dias_ficados INTERVAL,
+	cpf_vendedor VARCHAR(14),
+	preco_final REAL,
+	
+	CONSTRAINT PK_Historico PRIMARY KEY(cpf_cliente, placa_carro, data_devolvida, hora_devolvida),
+	CONSTRAINT FK1_Historico FOREIGN KEY(cpf_cliente) REFERENCES Cliente(cpf),
+	CONSTRAINT FK2_Historico FOREIGN KEY(placa_carro) REFERENCES Carro(placa),
+	CONSTRAINT FK3_Historico FOREIGN KEY(cpf_vendedor) REFERENCES Vendedor(cpf)
+);
